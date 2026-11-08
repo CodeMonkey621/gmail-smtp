@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Gmail SMTP
-Version: 1.2.3.23
+Version: 1.2.3.24
 Requires at least: 7.0
 Requires PHP: 8.1
 Plugin URI: https://wphowto.net/gmail-smtp-plugin-for-wordpress-1341
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')){
 
 class GMAIL_SMTP {
     
-    var $plugin_version = '1.2.3.23';
+    var $plugin_version = '1.2.3.24';
     var $phpmailer_version = '7.0.2';
     var $google_api_client_version = '2.19.4';
     var $plugin_url;
@@ -53,9 +53,11 @@ class GMAIL_SMTP {
             include_once('addons/gmail-smtp-addons.php');
         }
         add_action('plugins_loaded', array($this, 'plugins_loaded_handler'));
-        add_action('admin_menu', array($this, 'options_menu'));
+        //add_action('admin_menu', array($this, 'options_menu'));
+        add_action('admin_menu', array($this, 'plugin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
-        add_action('init', array($this, 'plugin_init'));
+        //add_action('init', array($this, 'plugin_init'));
+        add_action('admin_init', array($this, 'admin_init'));
         add_action('admin_notices', 'gmail_smtp_admin_notice');
         if(is_gmail_smtp_configured()){
             add_filter('pre_wp_mail', 'gmail_smtp_pre_wp_mail', 10, 2);
@@ -63,7 +65,12 @@ class GMAIL_SMTP {
     }
     
     function enqueue_admin_scripts($hook) {
+        /*
         if('settings_page_gmail-smtp-settings' != $hook) {
+            return;
+        }
+        */
+        if('toplevel_page_gmail-smtp' != $hook) {
             return;
         }
         wp_register_style('gmail-smtp-addons-menu', GMAIL_SMTP_URL.'/addons/gmail-smtp-addons.css');
@@ -79,35 +86,45 @@ class GMAIL_SMTP {
     }
 
     function plugin_url() {
-        if ($this->plugin_url)
+        if ($this->plugin_url){
             return $this->plugin_url;
+        }
         return $this->plugin_url = plugins_url(basename(plugin_dir_path(__FILE__)), basename(__FILE__));
     }
 
     function plugin_path() {
-        if ($this->plugin_path)
+        if ($this->plugin_path){
             return $this->plugin_path;
+        }
         return $this->plugin_path = untrailingslashit(plugin_dir_path(__FILE__));
     }
 
     function add_plugin_action_links($links, $file) {
         if ($file == plugin_basename(dirname(__FILE__) . '/main.php')) {
-            $links[] = '<a href="options-general.php?page=gmail-smtp-settings">'.__('Settings', 'gmail-smtp').'</a>';
+            //$links[] = '<a href="options-general.php?page=gmail-smtp-settings">'.__('Settings', 'gmail-smtp').'</a>';
+            $links[] = '<a href="admin.php?page=gmail-smtp-settings">'.__('Settings', 'gmail-smtp').'</a>';
         }
         return $links;
     }
-    
+    /*
     function options_menu() {
         add_options_page(__('Gmail SMTP', 'gmail-smtp'), __('Gmail SMTP', 'gmail-smtp'), 'manage_options', 'gmail-smtp-settings', array($this, 'options_page'));
     }
-
-    function options_page() {
+    */
+    function plugin_menu() {
+        $menu_slug = 'gmail-smtp';
+        add_menu_page(__('Gmail SMTP', 'gmail-smtp'), __('Gmail SMTP', 'gmail-smtp'), 'manage_options', $menu_slug, '', 'dashicons-email', '25.1');
+        add_submenu_page($menu_slug, __('Add-ons', 'gmail-smtp'), __('Add-ons', 'gmail-smtp'), 'manage_options', $menu_slug, 'gmail_smtp_display_addons');
+        add_submenu_page($menu_slug, __('Settings', 'gmail-smtp'), __('Settings', 'gmail-smtp'), 'manage_options', 'gmail-smtp-settings', array($this, 'settings_page'));
+    }
+    /* function options_page */
+    function settings_page() {
         $plugin_tabs = array(
             'gmail-smtp-settings' => __('General', 'gmail-smtp'),
             'gmail-smtp-settings&action=test-email' => __('Test Email', 'gmail-smtp'),
             'gmail-smtp-settings&action=revoke-access' => __('Revoke Access', 'gmail-smtp'),
             'gmail-smtp-settings&action=server-info' => __('Server Info', 'gmail-smtp'),
-            'gmail-smtp-settings&action=addons' => __('Add-ons', 'gmail-smtp'),
+            /*'gmail-smtp-settings&action=addons' => __('Add-ons', 'gmail-smtp'),*/
             'gmail-smtp-settings&action=advanced' => __('Advanced', 'gmail-smtp'),
         );
         $url = "https://wphowto.net/gmail-smtp-plugin-for-wordpress-1341";
@@ -164,9 +181,11 @@ class GMAIL_SMTP {
                case 'server-info':
                    $this->server_info_settings();
                    break;
+               /*
                case 'addons':
                    gmail_smtp_display_addons();
                    break;
+               */
                case 'advanced':
                    $this->advanced_settings();
                    break;
@@ -179,36 +198,53 @@ class GMAIL_SMTP {
         echo '</div>';
     }
     
-    function plugin_init(){
-        if(is_admin()){
-            if(isset($_GET['action']) && $_GET['action'] == "oauth_grant"){
-                
-                include_once('google-api-php-client/vendor/autoload.php');
-                include_once('class.phpmaileroauthgoogle.php');
-                
-                if (isset($_GET['code'])) {
-                    $authCode = sanitize_text_field($_GET['code']);
-                    $accessToken = GmailXOAuth2::resetCredentials($authCode);
-                    if(isset($accessToken) && !empty($accessToken)){                       
-                        //echo __('Access Granted Successfully!', 'gmail-smtp');
-                        $_GET['gmail_smtp_access_granted'] = "yes";
-                    }
-                    else{
-                        $_GET['gmail_smtp_access_granted'] = "no";
-                    }
-                }
-                else {
-                    // If we don't have an authorization code then get one
-                    $authUrl_array = GmailXOAuth2::authenticate();
-                    if(isset($authUrl_array['authorization_uri'])){
-                        $authUrl= $authUrl_array['authorization_uri'];
-                        wp_redirect(esc_url_raw($authUrl));
-                        exit;
-                    }
-                }
-                // Unix timestamp of when the token will expire, and need refreshing
-                //    echo $token->expires;
+    function admin_init(){
+
+        if(wp_doing_ajax()) {
+            return;
+        }
+        //
+        if(isset($_GET['action']) && $_GET['action'] == "oauth_grant"){
+            
+            if (!current_user_can('manage_options')) {
+                wp_die('You are not allowed to perform this action.');
             }
+            
+            include_once('google-api-php-client/vendor/autoload.php');
+            include_once('class.phpmaileroauthgoogle.php');
+
+            if (isset($_GET['code'])) {
+                //
+                $user_id = get_current_user_id();
+                $expected_state = get_transient('gmail_smtp_oauth_state_' . $user_id);
+                $received_state = isset($_GET['state']) ? sanitize_text_field(wp_unslash($_GET['state'])) : '';
+                if (empty($expected_state) || empty($received_state) || !hash_equals($expected_state, $received_state)) {
+                    wp_die('Invalid OAuth state.');
+                }
+                delete_transient('gmail_smtp_oauth_state_' . $user_id);
+                //
+                $authCode = sanitize_text_field($_GET['code']);
+                $access_token_set = GmailXOAuth2::resetCredentials($authCode);
+                if($access_token_set){                       
+                    //echo __('Access Granted Successfully!', 'gmail-smtp');
+                    $_GET['gmail_smtp_access_granted'] = "yes";
+                }
+                else{
+                    $_GET['gmail_smtp_access_granted'] = "no";
+                }
+            }
+            else {
+                check_admin_referer('gmail_smtp_grant_oauth');
+                // If we don't have an authorization code then get one
+                $authUrl_array = GmailXOAuth2::authenticate();
+                if(isset($authUrl_array['authorization_uri'])){
+                    $authUrl= $authUrl_array['authorization_uri'];
+                    wp_redirect(esc_url_raw($authUrl));
+                    exit;
+                }
+            }
+            // Unix timestamp of when the token will expire, and need refreshing
+            //    echo $token->expires;
         }
     }
     
@@ -271,11 +307,8 @@ class GMAIL_SMTP {
     
     function revoke_access_settings()
     {
-        if (isset($_POST['gmail_smtp_delete_access_key'])) {
-            $nonce = $_REQUEST['_wpnonce'];
-            if (!wp_verify_nonce($nonce, 'gmail_smtp_delete_accesskey')) {
-                wp_die('Error! Nonce Security Check Failed! please click on the button again.');
-            }
+        if (isset($_POST['gmail_smtp_delete_access_key']) && current_user_can('manage_options')) {
+            check_admin_referer('gmail_smtp_delete_accesskey');
             $options = array();
             $options['oauth_access_token'] = '';
             gmail_smtp_update_option($options);
@@ -295,7 +328,7 @@ class GMAIL_SMTP {
             </ol>    
         </div>
 
-        <form method="post" action="<?php echo $_SERVER["REQUEST_URI"]; ?>">
+        <form method="post" action="">
             <?php wp_nonce_field('gmail_smtp_delete_accesskey'); ?>           
 
             <p class="submit"><input type="submit" name="gmail_smtp_delete_access_key" id="gmail_smtp_delete_access_key" class="button button-primary" value="Delete Access Key"></p>
@@ -459,7 +492,7 @@ class GMAIL_SMTP {
 
                     <tr valign="top">
                         <th scope="row"><label for="oauth_redirect_uri"><?php _e('Authorized Redirect URI', 'gmail-smtp');?></label></th>
-                        <td><input name="oauth_redirect_uri" type="text" id="oauth_redirect_uri" value="<?php echo esc_url(admin_url("options-general.php?page=gmail-smtp-settings&action=oauth_grant")); ?>" readonly class="regular-text code">
+                        <td><input name="oauth_redirect_uri" type="text" id="oauth_redirect_uri" value="<?php echo esc_url(admin_url("admin.php?page=gmail-smtp-settings&action=oauth_grant")); ?>" readonly class="regular-text code">
                             <p class="description"><?php _e('Copy this URL into your web application', 'gmail-smtp');?></p></td>
                     </tr>
 
@@ -525,8 +558,12 @@ class GMAIL_SMTP {
         
         <?php
         if($this->can_grant_permission()){
+            $oauth_url = wp_nonce_url(
+                add_query_arg('action', 'oauth_grant'),
+                'gmail_smtp_grant_oauth'
+            );
         ?>
-        <a class="button button-primary" href="<?php echo $_SERVER["REQUEST_URI"].'&action=oauth_grant'; ?>"><?php _e('Grant Permission', 'gmail-smtp');?></a>                             
+        <a class="button button-primary" href="<?php echo esc_url($oauth_url); ?>"><?php _e('Grant Permission', 'gmail-smtp');?></a>                             
         <?php
         }        
     }

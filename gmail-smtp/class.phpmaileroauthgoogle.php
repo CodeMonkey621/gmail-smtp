@@ -36,7 +36,7 @@ class GmailXOAuth2 {
         $google_client->setScopes ( 'https://mail.google.com/' );
         $google_client->setClientId($clientId);
         $google_client->setClientSecret($clientSecret);
-        $redirect_url = admin_url("options-general.php?page=gmail-smtp-settings&action=oauth_grant");
+        $redirect_url = admin_url("admin.php?page=gmail-smtp-settings&action=oauth_grant");
         $google_client->setRedirectUri($redirect_url);
         //$google_client->setAuthConfigFile ( APP_CREDENTIALS );
         /* Its a must to request for 'offile access type' */
@@ -66,7 +66,9 @@ class GmailXOAuth2 {
             $accessToken = $options['oauth_access_token'];
 
         } else {
-
+            $state = bin2hex(random_bytes(32));
+            set_transient('gmail_smtp_oauth_state_' . get_current_user_id(), $state, 600);
+            $client->setState($state);
             return array( 'authorization_uri' => $client->createAuthUrl() );
 
         }
@@ -116,8 +118,8 @@ class GmailXOAuth2 {
             //json_encode the token since authenticate() function returns it as an array now. It used to call getAccessToken() before which would return in json_encoded format.
             $options['oauth_access_token'] = json_encode($accessToken); 
             gmail_smtp_update_option($options);
-            return $accessToken;
-
+            //return $accessToken;
+            return true;
         }
 
         return false;

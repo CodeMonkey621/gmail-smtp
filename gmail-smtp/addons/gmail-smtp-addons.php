@@ -2,10 +2,10 @@
 
 function gmail_smtp_display_addons()
 {
-    /*
+
     echo '<div class="wrap">';
-    echo '<h2>' .__('Gmail SMTP Add-ons', 'wp-login-form') . '</h2>';
-    */
+    echo '<h2>' .__('Gmail SMTP Add-ons', 'gmail-smtp') . '</h2>';
+    
     $addons_data = array();
 
     $addon_1 = array(
