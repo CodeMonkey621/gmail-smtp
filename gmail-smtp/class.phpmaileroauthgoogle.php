@@ -36,7 +36,7 @@ class GmailXOAuth2 {
         $google_client->setScopes ( 'https://mail.google.com/' );
         $google_client->setClientId($clientId);
         $google_client->setClientSecret($clientSecret);
-        $redirect_url = admin_url("admin.php?page=gmail-smtp-settings&action=oauth_grant");
+        $redirect_url = gmail_smtp_admin_url("admin.php?page=gmail-smtp-settings&action=oauth_grant");
         $google_client->setRedirectUri($redirect_url);
         //$google_client->setAuthConfigFile ( APP_CREDENTIALS );
         /* Its a must to request for 'offile access type' */

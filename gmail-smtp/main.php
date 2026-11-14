@@ -1,7 +1,8 @@
 <?php
 /*
-Plugin Name: Gmail SMTP
-Version: 1.2.3.24
+Plugin Name: Gmail SMTP (Firegang Fork)
+Version: 1.2.3.24-fg2
+Update URI: https://github.com/CodeMonkey621/gmail-smtp
 Requires at least: 7.0
 Requires PHP: 8.1
 Plugin URI: https://wphowto.net/gmail-smtp-plugin-for-wordpress-1341
@@ -18,7 +19,7 @@ if (!defined('ABSPATH')){
 
 class GMAIL_SMTP {
     
-    var $plugin_version = '1.2.3.24';
+    var $plugin_version = '1.2.3.24-fg2';
     var $phpmailer_version = '7.0.2';
     var $google_api_client_version = '2.19.4';
     var $plugin_url;
@@ -30,6 +31,7 @@ class GMAIL_SMTP {
         define('GMAIL_SMTP_HOME_URL', home_url());
         define('GMAIL_SMTP_URL', $this->plugin_url());
         define('GMAIL_SMTP_PATH', $this->plugin_path());
+        define('GMAIL_SMTP_FILE', __FILE__);
         $this->plugin_includes();
         $this->loader_operations();
     }
@@ -54,11 +56,18 @@ class GMAIL_SMTP {
         }
         add_action('plugins_loaded', array($this, 'plugins_loaded_handler'));
         //add_action('admin_menu', array($this, 'options_menu'));
-        add_action('admin_menu', array($this, 'plugin_menu'));
+        // Network-activated on multisite: one settings page and one OAuth grant in Network Admin for every subsite
+        if(gmail_smtp_is_network_mode()){
+            add_action('network_admin_menu', array($this, 'plugin_menu'));
+            add_action('network_admin_notices', 'gmail_smtp_admin_notice');
+        }
+        else{
+            add_action('admin_menu', array($this, 'plugin_menu'));
+            add_action('admin_notices', 'gmail_smtp_admin_notice');
+        }
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         //add_action('init', array($this, 'plugin_init'));
         add_action('admin_init', array($this, 'admin_init'));
-        add_action('admin_notices', 'gmail_smtp_admin_notice');
         if(is_gmail_smtp_configured()){
             add_filter('pre_wp_mail', 'gmail_smtp_pre_wp_mail', 10, 2);
         }
@@ -70,7 +79,7 @@ class GMAIL_SMTP {
             return;
         }
         */
-        if('toplevel_page_gmail-smtp' != $hook) {
+        if('toplevel_page_gmail-smtp' != $hook && 'toplevel_page_gmail-smtp-network' != $hook) {
             return;
         }
         wp_register_style('gmail-smtp-addons-menu', GMAIL_SMTP_URL.'/addons/gmail-smtp-addons.css');
@@ -79,8 +88,8 @@ class GMAIL_SMTP {
     
     function plugins_loaded_handler()
     {
-        if(is_admin() && current_user_can('manage_options')){
-            add_filter('plugin_action_links', array($this, 'add_plugin_action_links'), 10, 2);
+        if(is_admin() && current_user_can(gmail_smtp_capability())){
+            add_filter(gmail_smtp_is_network_mode() ? 'network_admin_plugin_action_links' : 'plugin_action_links', array($this, 'add_plugin_action_links'), 10, 2);
         }
         load_plugin_textdomain('gmail-smtp', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/'); 
     }
@@ -113,9 +122,10 @@ class GMAIL_SMTP {
     */
     function plugin_menu() {
         $menu_slug = 'gmail-smtp';
-        add_menu_page(__('Gmail SMTP', 'gmail-smtp'), __('Gmail SMTP', 'gmail-smtp'), 'manage_options', $menu_slug, '', 'dashicons-email', '25.1');
-        add_submenu_page($menu_slug, __('Add-ons', 'gmail-smtp'), __('Add-ons', 'gmail-smtp'), 'manage_options', $menu_slug, 'gmail_smtp_display_addons');
-        add_submenu_page($menu_slug, __('Settings', 'gmail-smtp'), __('Settings', 'gmail-smtp'), 'manage_options', 'gmail-smtp-settings', array($this, 'settings_page'));
+        $capability = gmail_smtp_capability();
+        add_menu_page(__('Gmail SMTP', 'gmail-smtp'), __('Gmail SMTP', 'gmail-smtp'), $capability, $menu_slug, '', 'dashicons-email', '25.1');
+        add_submenu_page($menu_slug, __('Add-ons', 'gmail-smtp'), __('Add-ons', 'gmail-smtp'), $capability, $menu_slug, 'gmail_smtp_display_addons');
+        add_submenu_page($menu_slug, __('Settings', 'gmail-smtp'), __('Settings', 'gmail-smtp'), $capability, 'gmail-smtp-settings', array($this, 'settings_page'));
     }
     /* function options_page */
     function settings_page() {
@@ -206,7 +216,7 @@ class GMAIL_SMTP {
         //
         if(isset($_GET['action']) && $_GET['action'] == "oauth_grant"){
             
-            if (!current_user_can('manage_options')) {
+            if (!current_user_can(gmail_smtp_capability())) {
                 wp_die('You are not allowed to perform this action.');
             }
             
@@ -307,7 +317,7 @@ class GMAIL_SMTP {
     
     function revoke_access_settings()
     {
-        if (isset($_POST['gmail_smtp_delete_access_key']) && current_user_can('manage_options')) {
+        if (isset($_POST['gmail_smtp_delete_access_key']) && current_user_can(gmail_smtp_capability())) {
             check_admin_referer('gmail_smtp_delete_accesskey');
             $options = array();
             $options['oauth_access_token'] = '';
@@ -492,7 +502,7 @@ class GMAIL_SMTP {
 
                     <tr valign="top">
                         <th scope="row"><label for="oauth_redirect_uri"><?php _e('Authorized Redirect URI', 'gmail-smtp');?></label></th>
-                        <td><input name="oauth_redirect_uri" type="text" id="oauth_redirect_uri" value="<?php echo esc_url(admin_url("admin.php?page=gmail-smtp-settings&action=oauth_grant")); ?>" readonly class="regular-text code">
+                        <td><input name="oauth_redirect_uri" type="text" id="oauth_redirect_uri" value="<?php echo esc_url(gmail_smtp_admin_url("admin.php?page=gmail-smtp-settings&action=oauth_grant")); ?>" readonly class="regular-text code">
                             <p class="description"><?php _e('Copy this URL into your web application', 'gmail-smtp');?></p></td>
                     </tr>
 
@@ -625,7 +635,26 @@ class GMAIL_SMTP {
 
 }
 
+function gmail_smtp_is_network_mode(){
+    if(!is_multisite()){
+        return false;
+    }
+    $network_plugins = (array) get_site_option('active_sitewide_plugins', array());
+    return isset($network_plugins[plugin_basename(GMAIL_SMTP_FILE)]);
+}
+
+function gmail_smtp_capability(){
+    return gmail_smtp_is_network_mode() ? 'manage_network_options' : 'manage_options';
+}
+
+function gmail_smtp_admin_url($path){
+    return gmail_smtp_is_network_mode() ? network_admin_url($path) : admin_url($path);
+}
+
 function gmail_smtp_get_option(){
+    if(gmail_smtp_is_network_mode()){
+        return get_site_option('gmail_smtp_options');
+    }
     $options = get_option('gmail_smtp_options');
     return $options;
 }
@@ -636,10 +665,14 @@ function gmail_smtp_update_option($new_options){
     if(is_array($options)){
         $current_options = array_merge($empty_options, $options);
         $updated_options = array_merge($current_options, $new_options);
-        update_option('gmail_smtp_options', $updated_options);
     }
     else{
         $updated_options = array_merge($empty_options, $new_options);
+    }
+    if(gmail_smtp_is_network_mode()){
+        update_site_option('gmail_smtp_options', $updated_options);
+    }
+    else{
         update_option('gmail_smtp_options', $updated_options);
     }
 }
